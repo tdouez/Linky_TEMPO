@@ -29,19 +29,20 @@
 // Partage dans les Mêmes Conditions 4.0 International.
 //--------------------------------------------------------------------
 // 2023/02/03 - FB V1.0.0 alpha
+// 2023/02/16 - FB V1.0.0
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include <LibTeleinfo.h>
 #include <jled.h>
 
-#define VERSION   "v1.0.0 alpha"
+#define VERSION   "v1.0.0"
 
-#define LED_ROUGE 2
-#define LED_BLANC 3
-#define LED_BLEU  4
-#define LED_EAU   5 
-#define LED_CHAUF 6 
+#define LED_ROUGE 8
+#define LED_BLANC 9
+#define LED_BLEU  10
+#define LED_EAU   2
+#define LED_CHAUF 3 
 #define LED_TIC   7
 
 #define RELAIS_EAU   12
@@ -99,10 +100,18 @@ TInfo tinfo;
 void lecture_val_switch(byte *val_chauf, byte *val_eau)
 {
 
+  *val_chauf = 0;
+  *val_eau = 0;
+  
   for (int i=0; i<5; i++) {
     if (i<3) bitWrite(*val_chauf, i, !digitalRead(i+SW_0));
-      else bitWrite(*val_eau, i, !digitalRead(i+SW_0));
+      else bitWrite(*val_eau, i-3, !digitalRead(i+SW_0));
   }
+  Serial.print("Sw chauf:");
+  Serial.print(*val_chauf, BIN);
+  Serial.print(", Sw eau:");
+  Serial.println(*val_eau, BIN);
+
 }
 
 // ---------------------------------------------------------------- 
@@ -114,45 +123,53 @@ byte rc=0;
 
   switch (val_CHAUF) {
     case CHAUF_0:
+      Serial.println("CHAUF_0");
       rc=1;
       break;
       
     case CHAUF_1:
       if (jour == JOUR_BLEU || jour == JOUR_BLANC || (jour == JOUR_ROUGE && heure == HEURE_CREUSE)) {
+        Serial.println("CHAUF_1");
         rc=1;
       }
       break;
 
     case CHAUF_2:
       if (jour != JOUR_ROUGE) {
+        Serial.println("CHAUF_2");
         rc=1;
       }
       break;
 
     case CHAUF_3:
       if (jour == JOUR_BLEU || (jour = JOUR_BLANC && heure == HEURE_CREUSE)) {
+        Serial.println("CHAUF_3");
         rc=1;
       }
       break;
 
     case CHAUF_4:
       if (jour == JOUR_BLEU) {
+        Serial.println("CHAUF_4");
         rc=1;
       }
       break;
 
     case CHAUF_5:
       if (jour == JOUR_BLEU && heure == HEURE_CREUSE) {
+        Serial.println("CHAUF_5");
         rc=1;
       }
       break;
 
     case CHAUF_6:
+      Serial.println("CHAUF_6");
       rc=0;
       break;
 
     case CHAUF_C:
       if (heure == HEURE_CREUSE) {
+        Serial.println("CHAUF_C");
         rc=1;
       }
       break;
@@ -171,18 +188,21 @@ byte rc=0;
   switch (val_eau) {
     case EAU_1:
       if (heure == HEURE_CREUSE) {
+        Serial.println("EAU_1");
         rc=1;
       }
       break;
       
     case EAU_2:
       if (jour == JOUR_BLEU || (jour == JOUR_BLANC && heure == HEURE_CREUSE) || (jour == JOUR_ROUGE && heure == HEURE_CREUSE)) {
+        Serial.println("EAU_2");
         rc=1;
       }
       break;
 
     case EAU_3:
       if (jour == JOUR_BLEU || jour == JOUR_BLANC || (jour == JOUR_ROUGE && heure == HEURE_CREUSE)) {
+        Serial.println("EAU_3");
         rc=1;
       }
       break;
@@ -379,11 +399,13 @@ void setup() {
   digitalWrite(LED_ROUGE, HIGH);
   digitalWrite(LED_BLANC, HIGH);
   digitalWrite(LED_BLEU, HIGH);
-  digitalWrite(LED_TIC, LOW);
+  digitalWrite(LED_TIC, HIGH);
   digitalWrite(RELAIS_EAU, LOW);
   digitalWrite(RELAIS_CHAUF, LOW);
-  led_chauf.Off();
-  led_eau.Off();
+  led_chauf.On();
+  led_eau.On();
+  led_chauf.Update();
+  led_eau.Update();
 
   // init interface série suivant mode TIC
   mode_tic = init_speed_TIC();
@@ -397,6 +419,15 @@ void setup() {
    // init interface TIC
   tinfo.init(mode_tic);
   tinfo.attachData(DataCallback);
+
+  digitalWrite(LED_ROUGE, LOW);
+  digitalWrite(LED_BLANC, LOW);
+  digitalWrite(LED_BLEU, LOW);
+  digitalWrite(LED_TIC, LOW);
+  led_chauf.Off();
+  led_eau.Off();
+  led_chauf.Update();
+  led_eau.Update();
 
 }
 
@@ -418,8 +449,14 @@ void loop() {
     
     if (recup_val_relais_chauf(val_chauf)) {
       digitalWrite(RELAIS_CHAUF, HIGH);
-      if (heure == HEURE_PLEINE) led_chauf.Blink(600, 600).Forever();
-        else led_chauf.On();
+      if (heure == HEURE_PLEINE) {
+        led_chauf.Blink(600, 600).Forever();
+        Serial.println("blink");
+      }
+      else {
+        Serial.println("led_chauf.On");
+        led_chauf.On();
+      }
     }
     else {
       digitalWrite(RELAIS_CHAUF, LOW);
