@@ -30,13 +30,16 @@
 //--------------------------------------------------------------------
 // 2023/02/03 - FB V1.0.0 alpha
 // 2023/02/16 - FB V1.0.0
+// 2023/03/04 - FB V1.0.1 - Ajout sequence test led, correction détection TEMPO histo & standard, utilisation libTeleinfoLite
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
-#include <LibTeleinfo.h>
+#include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.0.0"
+#define VERSION   "v1.0.1"
+
+//#define DEBUG_TIC
 
 #define LED_ROUGE 8
 #define LED_BLANC 9
@@ -75,15 +78,16 @@
 #define CHAUF_6  B110
 #define CHAUF_C  B111
 
-#define EAU_1   B000
-#define EAU_2   B001
-#define EAU_3   B010
+#define EAU_0   B000
+#define EAU_1   B001
+#define EAU_2   B010
+#define EAU_3   B011
 
-const unsigned long TEMPS_MAJ  =  15000; // 10s,  Minimum time between send (in milliseconds). 
+const unsigned long TEMPS_MAJ  =  15000; // 15s,  Minimum time between send (in milliseconds). 
 unsigned long lastTime_maj = 0;
-unsigned int tarif = TARIF_AUTRE;
-unsigned int jour = JOUR_SANS;
-unsigned int heure = HEURE_TOUTE;
+uint8_t tarif = TARIF_AUTRE;
+uint8_t jour = JOUR_SANS;
+uint8_t heure = HEURE_TOUTE;
 
 auto led_chauf = JLed(LED_CHAUF); 
 auto led_eau = JLed(LED_EAU);
@@ -93,6 +97,41 @@ _Mode_e mode_tic;
 TInfo tinfo;
 
 
+
+
+// ---------------------------------------------------------------- 
+// sequence_test_led
+// ----------------------------------------------------------------
+void sequence_test_led()
+{
+
+  Serial.println(F("-- Sequence test --"));
+  Serial.println(F("LED rouge"));
+  digitalWrite(LED_ROUGE, HIGH);
+  delay(400);
+  Serial.println(F("LED blacnhe"));
+  digitalWrite(LED_BLANC, HIGH);
+  delay(400);
+  Serial.println(F("LED bleue"));
+  digitalWrite(LED_BLEU, HIGH);
+  delay(400);
+  Serial.println(F("LED TIC"));
+  digitalWrite(LED_TIC, HIGH);
+  delay(400);
+  Serial.println(F("LED EAU"));
+  digitalWrite(LED_EAU, HIGH);
+  delay(400);
+  Serial.println(F("LED CHAUF"));
+  digitalWrite(LED_CHAUF, HIGH);
+  delay(400);
+  digitalWrite(LED_ROUGE, LOW);
+  digitalWrite(LED_BLANC, LOW);
+  digitalWrite(LED_BLEU, LOW);
+  digitalWrite(LED_TIC, LOW);
+  digitalWrite(LED_EAU, LOW);
+  digitalWrite(LED_CHAUF, LOW);
+  Serial.println(F("-------------------"));
+}
 
 // ---------------------------------------------------------------- 
 // lecture_val_switch
@@ -186,6 +225,12 @@ byte recup_val_relais_eau(byte val_eau)
 byte rc=0;
 
   switch (val_eau) {
+
+    case EAU_0:
+      Serial.println("EAU_0");
+      rc=1;
+      break;
+
     case EAU_1:
       if (heure == HEURE_CREUSE) {
         Serial.println("EAU_1");
@@ -281,12 +326,12 @@ _Mode_e mode;
      mode = TINFO_MODE_STANDARD;
      Serial.end();
      Serial.begin(9600); // mode standard
-     Serial.println(F("TIC mode standard"));
+     Serial.println(F(">> TIC mode standard <<"));
      clignote_led(LED_TIC, 3, 500);
   }
   else {
     mode = TINFO_MODE_HISTORIQUE;
-    Serial.println(F("TIC mode historique"));
+    Serial.println(F(">> TIC mode historique <<"));
     clignote_led(LED_TIC, 5, 500);
   }
   
@@ -295,56 +340,88 @@ _Mode_e mode;
   return mode;
 }
 
-/* ======================================================================
-Function: DataCallback 
-Purpose : callback when we detected new or modified data received
-Input   : linked list pointer on the concerned data
-          current flags value
-Output  : - 
-Comments: -
-====================================================================== */
-void DataCallback(ValueList * me, uint8_t  flags)
+// ---------------------------------------------------------------- 
+// send_teleinfo
+// ---------------------------------------------------------------- 
+void send_teleinfo(char *etiq, char *val)
 {
    
   change_etat_led_teleinfo();
 
+#ifdef DEBUG_TIC
+  Serial.print(etiq);
+  Serial.println(val);
+#endif
+
   if (mode_tic == TINFO_MODE_HISTORIQUE) {
     // TIC historique --------------------------------------------------------
     // Recup contrat TEMPO
-    if (strstr(me->name, "OPTARIF") == 0) {
-      if (strstr(me->value, "BBR") == 0) tarif = TARIF_TEMPO;
-        else tarif = TARIF_AUTRE;
+    // L'option tarifaire choisie (donnée du groupe d’étiquette « OPTARIF ») est codée sur 4 caractères ASCII alphanumériques selon la syntaxe suivante :
+    //  BASE => Option Base,
+    //  HC.. => Option Heures Creuses,
+    //  EJP. => Option EJP,
+    //  BBRx => Option Tempo.
+    if (strcmp(etiq, "OPTARIF") == 0) {
+      Serial.print(F("OPTARIF:"));
+      Serial.println(val);
+      if (strncmp(val, "BBR", 3) == 0) {
+        tarif = TARIF_TEMPO;
+        Serial.println(F("H TARIF_TEMPO"));
+      }
+      else {
+        tarif = TARIF_AUTRE;
+        Serial.println(F("H TARIF_AUTRE"));
+      }
     }
 
     // Recup HC/HP et couleur jour
-    if (strstr(me->name, "PTEC") == 0) {
+    // « TH.. » => Toutes les Heures,
+    // « HC.. » => Heures Creuses,
+    // « HP.. » => Heures Pleines,
+    // « HN.. » => Heures Normales,
+    // « PM.. » => Heures de Pointe Mobile,
+    // « HCJB » => Heures Creuses Jours Bleus,
+    // « HCJW » => Heures Creuses Jours Blancs (White),
+    // « HCJR » => Heures Creuses Jours Rouges,
+    // « HPJB » => Heures Pleines Jours Bleus,
+    // « HPJW » => Heures Pleines Jours Blancs (White),
+    // « HPJR » => Heures Pleines Jours Rouges.
+    if (strcmp(etiq, "PTEC") == 0) {
+      Serial.print(F("PTEC:"));
+      Serial.println(val);
       if (tarif == TARIF_TEMPO) {
         jour=JOUR_SANS;
         heure=HEURE_TOUTE;
         
-        if (strstr(me->value, "HCJB") == 0) {
+        if (strcmp(val, "HCJB") == 0) {
           jour=JOUR_BLEU;
           heure=HEURE_CREUSE;
+          Serial.println(F("j bleu, h creuse"));
         }
-        if (strstr(me->value, "HCJW") == 0) {
+        if (strcmp(val, "HCJW") == 0) {
           jour=JOUR_BLANC;
           heure=HEURE_CREUSE;
+          Serial.println(F("j blanc, h creuse"));
         }
-        if (strstr(me->value, "HCJR") == 0) {
+        if (strcmp(val, "HCJR") == 0) {
           jour=JOUR_ROUGE;
           heure=HEURE_CREUSE;
+          Serial.println(F("j rouge, h creuse"));
         }
-        if (strstr(me->value, "HPJB") == 0) {
+        if (strcmp(val, "HPJB") == 0) {
           jour=JOUR_BLEU;
           heure=HEURE_PLEINE;
+          Serial.println(F("j bleu, h pleine"));
         }
-        if (strstr(me->value, "HPJW") == 0) {
+        if (strcmp(val, "HPJW") == 0) {
           jour=JOUR_BLANC;
           heure=HEURE_PLEINE;
+          Serial.println(F("j blanc, h pleine"));
         }
-        if (strstr(me->value, "HPJR") == 0) {
+        if (strcmp(val, "HPJR") == 0) {
           jour=JOUR_ROUGE;
           heure=HEURE_PLEINE;
+          Serial.println(F("j rouge, h pleine"));
         }
       }
     }
@@ -353,23 +430,43 @@ void DataCallback(ValueList * me, uint8_t  flags)
   else {
     // TIC standard --------------------------------------------------------
     // Recup contrat TEMPO
-    if (strstr(me->name, "NGTF") == 0) {
-      if (strstr(me->value, "BBR") == 0) tarif = TARIF_TEMPO;
-        else tarif = TARIF_AUTRE;
+    if (strcmp(etiq, "NTARF") == 0) {
+      Serial.print(F("NTARF:"));
+      Serial.println(val);
+      if (strncmp(val, "BBR", 3) == 0) {
+        tarif = TARIF_TEMPO;
+        Serial.println(F("S TARIF_TEMPO"));
+      }
+      else {
+        tarif = TARIF_AUTRE;
+        Serial.println(F("S TARIF_AUTRE"));
+      }
     }
 
     // Recup HC/HP
     heure=HEURE_TOUTE;
-    if (strstr(me->name, "NTARF") == 0) {
-      if (strstr(me->value, "1") == 0) heure=HEURE_PLEINE;
-        else if (strstr(me->value, "2") == 0) heure=HEURE_CREUSE;
+    if (strcmp(etiq, "PTEC") == 0) {
+      Serial.print(F("PTEC:"));
+      Serial.println(val);
+      if (strncmp(val, "TH", 2) == 0) {
+        heure=HEURE_PLEINE;
+        Serial.println(F("HEURE_PLEINE"));
+      }
+      else if (strcmp(val, "HC") == 0) {
+        heure=HEURE_CREUSE;
+        Serial.println(F("HEURE_CREUSE"));
+      } 
     }
     
     // Recup couleur jour
-    if (strstr(me->name, "STGE") == 0) {
-        unsigned long long_stge = atol(me->value);
+    if (strcmp(etiq, "STGE") == 0) {
+        Serial.print(F("STGE:"));
+        Serial.println(val);
+        unsigned long long_stge = atol(val);
         long_stge = (long_stge >> 24) && B11;
         jour = (int)long_stge;
+        Serial.print(F("Jour: "));
+        Serial.println(jour);
       }
   }
   
@@ -395,17 +492,8 @@ void setup() {
   pinMode(SW_2, INPUT_PULLUP);
   pinMode(SW_3, INPUT_PULLUP);
   pinMode(SW_4, INPUT_PULLUP);
-
-  digitalWrite(LED_ROUGE, HIGH);
-  digitalWrite(LED_BLANC, HIGH);
-  digitalWrite(LED_BLEU, HIGH);
-  digitalWrite(LED_TIC, HIGH);
-  digitalWrite(RELAIS_EAU, LOW);
-  digitalWrite(RELAIS_CHAUF, LOW);
-  led_chauf.On();
-  led_eau.On();
-  led_chauf.Update();
-  led_eau.Update();
+  
+  sequence_test_led();
 
   // init interface série suivant mode TIC
   mode_tic = init_speed_TIC();
@@ -418,16 +506,6 @@ void setup() {
 
    // init interface TIC
   tinfo.init(mode_tic);
-  tinfo.attachData(DataCallback);
-
-  digitalWrite(LED_ROUGE, LOW);
-  digitalWrite(LED_BLANC, LOW);
-  digitalWrite(LED_BLEU, LOW);
-  digitalWrite(LED_TIC, LOW);
-  led_chauf.Off();
-  led_eau.Off();
-  led_chauf.Update();
-  led_eau.Update();
 
 }
 
@@ -446,30 +524,38 @@ void loop() {
   if (currentTime - lastTime_maj > TEMPS_MAJ) {
     // commande relais suivant programmation -------
     lecture_val_switch(&val_chauf, &val_eau);
-    
+    // chauf ------
     if (recup_val_relais_chauf(val_chauf)) {
       digitalWrite(RELAIS_CHAUF, HIGH);
       if (heure == HEURE_PLEINE) {
         led_chauf.Blink(600, 600).Forever();
-        Serial.println("blink");
+        Serial.println(F("led_chauf.blink"));
       }
       else {
-        Serial.println("led_chauf.On");
+        Serial.println(F("led_chauf.On"));
         led_chauf.On();
       }
     }
     else {
       digitalWrite(RELAIS_CHAUF, LOW);
+      Serial.println(F("led_chauf.Off"));
       led_chauf.Off();
     }
-    
+    // eau -----
     if (recup_val_relais_eau(val_eau)) {
       digitalWrite(RELAIS_EAU, HIGH);
-      if (heure == HEURE_PLEINE) led_eau.Blink(600, 600).Forever();
-        else led_eau.On();
+      if (heure == HEURE_PLEINE) {
+        led_eau.Blink(600, 600).Forever();
+        Serial.println(F("led_eau.blink"));
+      }
+      else {
+        led_eau.On();
+        Serial.println(F("led_eau.On"));
+      }
     }
     else {
       digitalWrite(RELAIS_EAU, LOW);
+      Serial.println(F("led_eau.Off"));
       led_eau.Off();
     }
 
