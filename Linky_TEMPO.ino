@@ -31,13 +31,14 @@
 // 2023/02/03 - FB V1.0.0 alpha
 // 2023/02/16 - FB V1.0.0
 // 2023/03/04 - FB V1.0.1 - Ajout sequence test led, correction détection TEMPO histo & standard, utilisation libTeleinfoLite
+// 2023/03/13 - FB V1.0.2 - Correction sur programmation CHAUF/EAU
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.0.1"
+#define VERSION   "v1.0.2"
 
 //#define DEBUG_TIC
 
@@ -174,14 +175,14 @@ byte rc=0;
       break;
 
     case CHAUF_2:
-      if (jour != JOUR_ROUGE) {
+      if (jour == JOUR_BLEU || jour == JOUR_BLANC) {
         Serial.println("CHAUF_2");
         rc=1;
       }
       break;
 
     case CHAUF_3:
-      if (jour == JOUR_BLEU || (jour = JOUR_BLANC && heure == HEURE_CREUSE)) {
+      if (jour == JOUR_BLEU || (jour == JOUR_BLANC && heure == HEURE_CREUSE)) {
         Serial.println("CHAUF_3");
         rc=1;
       }
@@ -207,7 +208,7 @@ byte rc=0;
       break;
 
     case CHAUF_C:
-      if (heure == HEURE_CREUSE) {
+      if ((jour == JOUR_BLEU || jour == JOUR_BLANC || jour == JOUR_ROUGE) && heure == HEURE_CREUSE) {
         Serial.println("CHAUF_C");
         rc=1;
       }
@@ -232,7 +233,7 @@ byte rc=0;
       break;
 
     case EAU_1:
-      if (heure == HEURE_CREUSE) {
+      if ((jour == JOUR_BLEU || jour == JOUR_BLANC || jour == JOUR_ROUGE) && heure == HEURE_CREUSE) {
         Serial.println("EAU_1");
         rc=1;
       }
@@ -370,7 +371,7 @@ void send_teleinfo(char *etiq, char *val)
       }
       else {
         tarif = TARIF_AUTRE;
-        Serial.println(F("H TARIF_AUTRE"));
+				Serial.println(F("H TARIF_AUTRE"));
       }
     }
 
@@ -389,9 +390,10 @@ void send_teleinfo(char *etiq, char *val)
     if (strcmp(etiq, "PTEC") == 0) {
       Serial.print(F("PTEC:"));
       Serial.println(val);
-      if (tarif == TARIF_TEMPO) {
-        jour=JOUR_SANS;
-        heure=HEURE_TOUTE;
+      jour=JOUR_SANS;
+      heure=HEURE_TOUTE;
+	  
+  	  if (tarif == TARIF_TEMPO) {
         
         if (strcmp(val, "HCJB") == 0) {
           jour=JOUR_BLEU;
@@ -452,7 +454,7 @@ void send_teleinfo(char *etiq, char *val)
         heure=HEURE_PLEINE;
         Serial.println(F("HEURE_PLEINE"));
       }
-      else if (strcmp(val, "HC") == 0) {
+      else if (strncmp(val, "HC", 2) == 0) {
         heure=HEURE_CREUSE;
         Serial.println(F("HEURE_CREUSE"));
       } 
