@@ -961,8 +961,6 @@ _State_e TInfo::process(char c)
    // be sure 7 bits only
    c &= 0x7F;
 
-   Serial.print(c);
-
   // What we received ?
   switch (c)  {
     // start of transmission ???

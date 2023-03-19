@@ -32,15 +32,16 @@
 // 2023/02/16 - FB V1.0.0
 // 2023/03/04 - FB V1.0.1 - Ajout sequence test led, correction détection TEMPO histo & standard, utilisation libTeleinfoLite
 // 2023/03/13 - FB V1.0.2 - Correction sur programmation CHAUF/EAU 
+// 2023/03/19 - FB V1.0.3 - Correction sur lecture switch
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.0.2"
+#define VERSION   "v1.0.3"
 
-//#define DEBUG_TIC
+//#define DEBUG_TEMPO
 
 #define LED_ROUGE 8
 #define LED_BLANC 9
@@ -62,8 +63,8 @@
 #define TARIF_TEMPO 1
 
 #define HEURE_TOUTE    0
-#define HEURE_PLEINE   1
-#define HEURE_CREUSE   2
+#define HEURE_CREUSE   1
+#define HEURE_PLEINE   2
 
 #define JOUR_SANS  0
 #define JOUR_BLEU  1
@@ -144,8 +145,8 @@ void lecture_val_switch(byte *val_chauf, byte *val_eau)
   *val_eau = 0;
   
   for (int i=0; i<5; i++) {
-    if (i<3) bitWrite(*val_chauf, i, !digitalRead(i+SW_0));
-      else bitWrite(*val_eau, i-3, !digitalRead(i+SW_0));
+    if (i<3) bitWrite(*val_chauf, i, !digitalRead(SW_4-i));
+      else bitWrite(*val_eau, i-3, !digitalRead(SW_4-i));
   }
   Serial.print("Sw chauf:");
   Serial.print(*val_chauf, BIN);
@@ -233,8 +234,8 @@ byte rc=0;
       break;
 
     case EAU_1:
-      if ((jour == JOUR_BLEU || jour == JOUR_BLANC || jour == JOUR_ROUGE) && heure == HEURE_CREUSE) {
-        Serial.println("EAU_1");
+      if ((jour == JOUR_BLEU && heure == HEURE_CREUSE) || (jour == JOUR_BLANC && heure == HEURE_CREUSE) || (jour == JOUR_ROUGE && heure == HEURE_CREUSE)) {
+        Serial.println("EAU_1"); 
         rc=1;
       }
       break;
@@ -349,7 +350,7 @@ void send_teleinfo(char *etiq, char *val)
    
   change_etat_led_teleinfo();
 
-#ifdef DEBUG_TIC
+#ifdef DEBUG_TEMPO
   Serial.print(etiq);
   Serial.println(val);
 #endif
@@ -474,6 +475,39 @@ void send_teleinfo(char *etiq, char *val)
   
 }
 
+// ---------------------------------------------------------------- 
+// test_couleur_jour
+// ---------------------------------------------------------------- 
+void test_couleur_jour() {
+
+  Serial.println("---- Chauffage -----");
+  for (int chauf=CHAUF_0; chauf <= CHAUF_C; chauf++) {
+    Serial.print("CHAUF");
+    Serial.print(chauf);
+    Serial.print(" ");
+    for (jour = JOUR_BLEU; jour <= JOUR_ROUGE; jour++) {
+      for (heure = HEURE_CREUSE; heure <= HEURE_PLEINE; heure++) {
+        Serial.print(recup_val_relais_chauf(chauf));
+        Serial.print(" ");
+      }
+    }
+    Serial.println("");
+  }
+
+  Serial.println("---- Eau -----");
+  for (int eau=EAU_0; eau <= EAU_3; eau++) {
+    Serial.print("EAU");
+    Serial.print(eau);
+    Serial.print(" ");
+    for (jour = JOUR_BLEU; jour <= JOUR_ROUGE; jour++) {
+      for (heure = HEURE_CREUSE; heure <= HEURE_PLEINE; heure++) {
+        Serial.print(recup_val_relais_eau(eau));
+        Serial.print(" ");
+      }
+    }
+    Serial.println("");
+  }  
+}
 
 // ---------------------------------------------------------------- 
 // setup
@@ -505,6 +539,8 @@ void setup() {
   Serial.println(F("  _| \\_,_| _|_|_| \\___| \\___|   ___/ _| \\___| \\_,_| \\___|"));
   Serial.print(F("                                             "));
   Serial.println(VERSION);
+
+  //test_couleur_jour();
 
    // init interface TIC
   tinfo.init(mode_tic);
