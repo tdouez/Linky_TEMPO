@@ -33,15 +33,17 @@
 // 2023/03/04 - FB V1.0.1 - Ajout sequence test led, correction détection TEMPO histo & standard, utilisation libTeleinfoLite
 // 2023/03/13 - FB V1.0.2 - Correction sur programmation CHAUF/EAU 
 // 2023/03/19 - FB V1.0.3 - Correction sur lecture switch
+// 2023/03/23 - FB V1.0.4 - Correction sur inversion sorties relais eau/chauf. Merci à Patrick F. pour son aide.
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.0.3"
+#define VERSION   "v1.0.4"
 
 //#define DEBUG_TEMPO
+//#define DEBUG_TEST
 
 #define LED_ROUGE 8
 #define LED_BLANC 9
@@ -50,8 +52,8 @@
 #define LED_CHAUF 3 
 #define LED_TIC   7
 
-#define RELAIS_EAU   12
-#define RELAIS_CHAUF 13 
+#define RELAIS_EAU   13
+#define RELAIS_CHAUF 12 
 
 #define SW_0   A0
 #define SW_1   A1
@@ -84,6 +86,11 @@
 #define EAU_1   B001
 #define EAU_2   B010
 #define EAU_3   B011
+
+#ifdef DEBUG_TEST
+const unsigned long TEMPS_TEST  =  60000; // 15s,  Minimum time between send (in milliseconds). 
+unsigned long lastTime_test = 0;
+#endif
 
 const unsigned long TEMPS_MAJ  =  15000; // 15s,  Minimum time between send (in milliseconds). 
 unsigned long lastTime_maj = 0;
@@ -334,7 +341,7 @@ _Mode_e mode;
   else {
     mode = TINFO_MODE_HISTORIQUE;
     Serial.println(F(">> TIC mode historique <<"));
-    clignote_led(LED_TIC, 5, 500);
+    clignote_led(LED_TIC, 6, 200);
   }
   
   digitalWrite(LED_TIC, LOW);
@@ -559,12 +566,31 @@ void loop() {
   led_chauf.Update();
   led_eau.Update();
 
+#ifdef DEBUG_TEST
+  // Test jour/tarif
+  if (currentTime - lastTime_test > TEMPS_TEST) {
+    jour = JOUR_BLEU;
+    tarif = TARIF_TEMPO;
+    if (heure == HEURE_PLEINE) {
+      Serial.println(">> HP");
+      heure = HEURE_CREUSE;
+    }
+    else {
+      Serial.println(">> HC");
+      heure = HEURE_PLEINE;
+    }
+    lastTime_test = currentTime;
+  }
+#endif
+
   if (currentTime - lastTime_maj > TEMPS_MAJ) {
     // commande relais suivant programmation -------
     lecture_val_switch(&val_chauf, &val_eau);
     // chauf ------
-    if (recup_val_relais_chauf(val_chauf)) {
+    if (recup_val_relais_chauf(val_chauf) == 1) {
       digitalWrite(RELAIS_CHAUF, HIGH);
+	    Serial.println(F("RELAIS_CHAUF.HIGH"));
+
       if (heure == HEURE_PLEINE) {
         led_chauf.Blink(600, 600).Forever();
         Serial.println(F("led_chauf.blink"));
@@ -575,13 +601,17 @@ void loop() {
       }
     }
     else {
+	    Serial.println(F("RELAIS_CHAUF.LOW"));
       digitalWrite(RELAIS_CHAUF, LOW);
       Serial.println(F("led_chauf.Off"));
       led_chauf.Off();
     }
+    
     // eau -----
-    if (recup_val_relais_eau(val_eau)) {
+    if (recup_val_relais_eau(val_eau) == 1) {
+	    Serial.println(F("RELAIS_EAU.HIGH"));
       digitalWrite(RELAIS_EAU, HIGH);
+
       if (heure == HEURE_PLEINE) {
         led_eau.Blink(600, 600).Forever();
         Serial.println(F("led_eau.blink"));
@@ -592,6 +622,7 @@ void loop() {
       }
     }
     else {
+	    Serial.println(F("RELAIS_EAU.LOW"));
       digitalWrite(RELAIS_EAU, LOW);
       Serial.println(F("led_eau.Off"));
       led_eau.Off();
