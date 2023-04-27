@@ -34,16 +34,21 @@
 // 2023/03/13 - FB V1.0.2 - Correction sur programmation CHAUF/EAU 
 // 2023/03/19 - FB V1.0.3 - Correction sur lecture switch
 // 2023/03/23 - FB V1.0.4 - Correction sur inversion sorties relais eau/chauf. Merci à Patrick F. pour son aide.
+// 2023/04/21 - FB V1.0.5 - Correction sur la detection du mode TIC standard. Merci à Gilbert P. pour son aide.
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.0.4"
+#define VERSION   "v1.0.5"
+
+//#define FORCE_MODE_TIC		TINFO_MODE_HISTORIQUE
+//#define FORCE_MODE_TIC		TINFO_MODE_STANDARD
 
 //#define DEBUG_TEMPO
 //#define DEBUG_TEST
+//#define DEBUG_TIC
 
 #define LED_ROUGE 8
 #define LED_BLANC 9
@@ -92,7 +97,7 @@ const unsigned long TEMPS_TEST  =  60000; // 15s,  Minimum time between send (in
 unsigned long lastTime_test = 0;
 #endif
 
-const unsigned long TEMPS_MAJ  =  15000; // 15s,  Minimum time between send (in milliseconds). 
+const unsigned long TEMPS_MAJ  =  10000; // 10s,  Minimum time between send (in milliseconds). 
 unsigned long lastTime_maj = 0;
 uint8_t tarif = TARIF_AUTRE;
 uint8_t jour = JOUR_SANS;
@@ -270,7 +275,7 @@ byte rc=0;
 // ---------------------------------------------------------------- 
 void change_etat_led_teleinfo()
 {
-  static int led_state;
+  static int led_state=0;
 
   led_state = !led_state;
   digitalWrite(LED_TIC, led_state);
@@ -281,7 +286,7 @@ void change_etat_led_teleinfo()
 // ---------------------------------------------------------------- 
 void clignote_led(uint8_t led, uint8_t nbr, int16_t delais)
 {
-int led_state;
+int led_state=0;
 
   for (int i=0; i<nbr*2; i++) {
     led_state = !led_state;
@@ -300,6 +305,8 @@ boolean flag_timeout = false;
 boolean flag_found_speed = false;
 uint32_t currentTime = millis();
 unsigned step = 0;
+int nbc_etiq=0;
+int nbc_val=0;
 _Mode_e mode;
 
   digitalWrite(LED_TIC, HIGH);
@@ -307,31 +314,68 @@ _Mode_e mode;
   // Test en mode historique
   // Recherche des éléments de début, milieu et fin de trame (0x0A, 0x20, 0x20, 0x0D)
   Serial.begin(1200); // mode historique
+  Serial.println(F("Recherche mod TIC"));
+
   while (!flag_timeout && !flag_found_speed) {
     if (Serial.available()>0) {
       char in = (char)Serial.read() & 127;  // seulement sur 7 bits
+	  
+	  #ifdef DEBUG_TIC
+		Serial.print(in, HEX);
+		Serial.println(".");
+	  #endif
       // début trame
-        if (in == 0x0A) {
+      if (in == 0x0A) {
         step = 1;
+        nbc_etiq = -1;
+        nbc_val = 0;
+        #ifdef DEBUG_TIC
+          Serial.println(F("Deb 0x0A"));
+        #endif
       }
-      // premier milieu de trame
-        if (step == 1 && in == 0x20) {
-        step = 2;
+	  
+      // premier milieu de trame, étiquette
+      if (step == 1) {
+        if (in == 0x20) {
+          #ifdef DEBUG_TIC
+            Serial.print(F("Etq 0x20:"));
+            Serial.println(nbc_etiq);
+          #endif
+          if (nbc_etiq > 3 && nbc_etiq < 10) step = 2;
+            else step = 0;
+        }
+        else nbc_etiq++; // recupère nombre caractères de l'étiquette
       }
-      // deuxième milieu de trame
-        if (step == 2 && in == 0x20) {
-        step = 3;
+      else {
+        // deuxième milieu de trame, valeur
+        if (step == 2) {
+          if (in == 0x20) {
+            #ifdef DEBUG_TIC
+              Serial.print(F("Val 0x20:"));
+              Serial.println(nbc_val);
+            #endif
+            if (nbc_val > 0 && nbc_val < 13) step = 3;
+              else step = 0;
+          }
+          else nbc_val++; // recupère nombre caractères de la valeur
+        }
       }
+
       // fin trame
-        if (step == 3 && in == 0x0D) {
+      if (step == 3 && in == 0x0D) {
+        #ifdef DEBUG_TIC
+          Serial.println(F("Fin 0x0D"));
+        #endif
         flag_found_speed = true;
         step = 0;
       }
     }
-    if (currentTime + 10000 <  millis()) flag_timeout = true; // 10s de timeout
+    if (currentTime + 10000 <  millis()) {
+      flag_timeout = true; // 10s de timeout
+    }
   }
 
-  if (flag_timeout) { // trame avec vistesse histo non trouvée donc passage en mode standard
+  if (flag_timeout == true && flag_found_speed == false) { // trame avec vistesse histo non trouvée donc passage en mode standard
      mode = TINFO_MODE_STANDARD;
      Serial.end();
      Serial.begin(9600); // mode standard
@@ -440,10 +484,10 @@ void send_teleinfo(char *etiq, char *val)
   else {
     // TIC standard --------------------------------------------------------
     // Recup contrat TEMPO
-    if (strcmp(etiq, "NTARF") == 0) {
-      Serial.print(F("NTARF:"));
+    if (strcmp(etiq, "NGTF") == 0) {
+      Serial.print(F("NGTF:"));
       Serial.println(val);
-      if (strncmp(val, "BBR", 3) == 0) {
+      if (strstr(val, "TEMPO") != NULL) {
         tarif = TARIF_TEMPO;
         Serial.println(F("S TARIF_TEMPO"));
       }
@@ -455,14 +499,14 @@ void send_teleinfo(char *etiq, char *val)
 
     // Recup HC/HP
     heure=HEURE_TOUTE;
-    if (strcmp(etiq, "PTEC") == 0) {
-      Serial.print(F("PTEC:"));
+    if (strcmp(etiq, "LTARF") == 0) {
+      Serial.print(F("LTARF:"));
       Serial.println(val);
-      if (strncmp(val, "TH", 2) == 0) {
+      if (strstr(val, "HP") != NULL) {
         heure=HEURE_PLEINE;
         Serial.println(F("HEURE_PLEINE"));
       }
-      else if (strncmp(val, "HC", 2) == 0) {
+      else if (strstr(val, "HC") != NULL) {
         heure=HEURE_CREUSE;
         Serial.println(F("HEURE_CREUSE"));
       } 
@@ -472,8 +516,8 @@ void send_teleinfo(char *etiq, char *val)
     if (strcmp(etiq, "STGE") == 0) {
         Serial.print(F("STGE:"));
         Serial.println(val);
-        unsigned long long_stge = atol(val);
-        long_stge = (long_stge >> 24) && B11;
+        unsigned long long_stge = strtol(val, NULL, 16);
+        long_stge = (long_stge >> 24) & B11;
         jour = (int)long_stge;
         Serial.print(F("Jour: "));
         Serial.println(jour);
@@ -539,7 +583,19 @@ void setup() {
   sequence_test_led();
 
   // init interface série suivant mode TIC
-  mode_tic = init_speed_TIC();
+  #ifdef FORCE_MODE_TIC
+	mode_tic = FORCE_MODE_TIC;
+	if (mode_tic == TINFO_MODE_HISTORIQUE) {
+		Serial.begin(1200);
+		Serial.print(F(">> FORCE TIC mode historique <<"));
+	}
+	else {
+		Serial.begin(9600);
+		Serial.print(F(">> FORCE TIC mode standard <<"));
+	}
+  #else
+	mode_tic = init_speed_TIC();
+  #endif
 
   Serial.println(F("   __|              _/           _ )  |"));
   Serial.println(F("   _| |  |   ` \\    -_)   -_)    _ \\  |   -_)  |  |   -_)"));
