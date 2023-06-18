@@ -35,13 +35,14 @@
 // 2023/03/19 - FB V1.0.3 - Correction sur lecture switch
 // 2023/03/23 - FB V1.0.4 - Correction sur inversion sorties relais eau/chauf. Merci à Patrick F. pour son aide.
 // 2023/04/21 - FB V1.0.5 - Correction sur la detection du mode TIC standard. Merci à Gilbert P. pour son aide.
+// 2023/06/16 - FB V1.1.0 - Ajout visualisation couleur lendemain
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.0.5"
+#define VERSION   "v1.1.0"
 
 //#define FORCE_MODE_TIC		TINFO_MODE_HISTORIQUE
 //#define FORCE_MODE_TIC		TINFO_MODE_STANDARD
@@ -92,19 +93,19 @@
 #define EAU_2   B010
 #define EAU_3   B011
 
-#ifdef DEBUG_TEST
-const unsigned long TEMPS_TEST  =  60000; // 15s,  Minimum time between send (in milliseconds). 
-unsigned long lastTime_test = 0;
-#endif
 
 const unsigned long TEMPS_MAJ  =  10000; // 10s,  Minimum time between send (in milliseconds). 
 unsigned long lastTime_maj = 0;
 uint8_t tarif = TARIF_AUTRE;
 uint8_t jour = JOUR_SANS;
 uint8_t heure = HEURE_TOUTE;
+uint8_t demain = JOUR_SANS;
 
 auto led_chauf = JLed(LED_CHAUF); 
 auto led_eau = JLed(LED_EAU);
+auto led_bleu = JLed(LED_BLEU);
+auto led_blanc = JLed(LED_BLANC);
+auto led_rouge = JLed(LED_ROUGE);
 
 byte val_switch=0;
 _Mode_e mode_tic;
@@ -122,22 +123,22 @@ void sequence_test_led()
   Serial.println(F("-- Sequence test --"));
   Serial.println(F("LED rouge"));
   digitalWrite(LED_ROUGE, HIGH);
-  delay(400);
+  delay(300);
   Serial.println(F("LED blacnhe"));
   digitalWrite(LED_BLANC, HIGH);
-  delay(400);
+  delay(300);
   Serial.println(F("LED bleue"));
   digitalWrite(LED_BLEU, HIGH);
-  delay(400);
+  delay(300);
   Serial.println(F("LED TIC"));
   digitalWrite(LED_TIC, HIGH);
-  delay(400);
+  delay(300);
   Serial.println(F("LED EAU"));
   digitalWrite(LED_EAU, HIGH);
-  delay(400);
+  delay(300);
   Serial.println(F("LED CHAUF"));
   digitalWrite(LED_CHAUF, HIGH);
-  delay(400);
+  delay(300);
   digitalWrite(LED_ROUGE, LOW);
   digitalWrite(LED_BLANC, LOW);
   digitalWrite(LED_BLEU, LOW);
@@ -479,6 +480,25 @@ void send_teleinfo(char *etiq, char *val)
         }
       }
     }
+	
+	// Recup couleur lendemain
+    if (strcmp(etiq, "DEMAIN") == 0) {
+      Serial.print(F("DEMAIN:"));
+      Serial.println(val);
+	    demain=JOUR_SANS;
+  	  if (strcmp(val, "BLEU") == 0) {
+    		demain=JOUR_BLEU;
+    		Serial.println(F("bleu"));
+  	  }
+  	  if (strcmp(val, "BLANC") == 0) {
+    		demain=JOUR_BLANC;
+    		Serial.println(F("blanc"));
+  	  }
+  	  if (strcmp(val, "ROUGE") == 0) {
+    		demain=JOUR_ROUGE;
+    		Serial.println(F("rouge"));
+  	  }
+	}
           
   }
   else {
@@ -514,16 +534,24 @@ void send_teleinfo(char *etiq, char *val)
     
     // Recup couleur jour
     if (strcmp(etiq, "STGE") == 0) {
-        Serial.print(F("STGE:"));
-        Serial.println(val);
-        unsigned long long_stge = strtol(val, NULL, 16);
-        long_stge = (long_stge >> 24) & B11;
-        jour = (int)long_stge;
-        Serial.print(F("Jour: "));
-        Serial.println(jour);
-      }
-  }
+      Serial.print(F("STGE:"));
+      Serial.println(val);
   
+      // couleur jour courant
+      unsigned long long_stge = strtol(val, NULL, 16);
+      long_stge = (long_stge >> 24) & B11;
+      jour = (int)long_stge;
+      Serial.print(F("Jour: "));
+      Serial.print(jour);
+  
+      // couleur jour lendemain
+      long_stge = strtol(val, NULL, 16);
+      long_stge = (long_stge >> 26) & B11;
+      demain = (int)long_stge;
+      Serial.print(F(", Demain: "));
+      Serial.println(jour);
+     }
+  }
 }
 
 // ---------------------------------------------------------------- 
@@ -608,6 +636,18 @@ void setup() {
    // init interface TIC
   tinfo.init(mode_tic);
 
+  #ifdef DEBUG_TEST
+  jour = JOUR_SANS;
+  tarif = TARIF_TEMPO;
+  demain = JOUR_SANS;
+  Serial.println(F("!! ------ Mode Test --------- !!"));
+  Serial.print("> Jour : ");
+  Serial.println(jour);
+  Serial.print("> Demain : ");
+  Serial.println(demain);
+  Serial.println("----------------------------");
+  #endif
+
 }
 
 // ---------------------------------------------------------------- 
@@ -621,25 +661,29 @@ void loop() {
 
   led_chauf.Update();
   led_eau.Update();
+  led_bleu.Update();
+  led_blanc.Update();
+  led_rouge.Update();
 
-#ifdef DEBUG_TEST
-  // Test jour/tarif
-  if (currentTime - lastTime_test > TEMPS_TEST) {
-    jour = JOUR_BLEU;
-    tarif = TARIF_TEMPO;
-    if (heure == HEURE_PLEINE) {
-      Serial.println(">> HP");
-      heure = HEURE_CREUSE;
-    }
-    else {
-      Serial.println(">> HC");
-      heure = HEURE_PLEINE;
-    }
-    lastTime_test = currentTime;
-  }
-#endif
 
   if (currentTime - lastTime_maj > TEMPS_MAJ) {
+
+    #ifdef DEBUG_TEST
+    // Test jour/tarif
+    demain++;
+    if (demain > JOUR_ROUGE) {
+      demain = JOUR_SANS;
+      jour++;
+    }
+    if (jour > JOUR_ROUGE) {
+      jour = JOUR_SANS;
+    }
+    Serial.print("> Jour : ");
+    Serial.println(jour);
+    Serial.print("> Demain : ");
+    Serial.println(demain);
+    Serial.println("----------------------------");
+    #endif
     // commande relais suivant programmation -------
     lecture_val_switch(&val_chauf, &val_eau);
     // chauf ------
@@ -684,26 +728,47 @@ void loop() {
       led_eau.Off();
     }
 
-    // commande led couleur jour
-    switch (jour) {
-      case JOUR_BLEU:
-        digitalWrite(LED_BLEU, HIGH);
-        digitalWrite(LED_BLANC, LOW);
-        digitalWrite(LED_ROUGE, LOW);
-        break;
+    // commande led couleur demain
+    if (jour != JOUR_SANS) {
+      switch (demain) {
+        case JOUR_BLEU:
+          led_bleu.Blink(600, 600).Forever();
+          break;
+        case JOUR_BLANC:
+          led_blanc.Blink(600, 600).Forever();
+          break;
+        case JOUR_ROUGE:
+          led_rouge.Blink(600, 600).Forever();
+          break;
+      }
 
-      case JOUR_BLANC:
-        digitalWrite(LED_BLEU, LOW);
-        digitalWrite(LED_BLANC, HIGH);
-        digitalWrite(LED_ROUGE, LOW);
-        break;
+      // commande led couleur jour
+      switch (jour) {
+        case JOUR_BLEU:
+          if (demain != JOUR_BLEU) led_bleu.On();
+          if (demain != JOUR_BLANC) led_blanc.Off();
+          if (demain != JOUR_ROUGE) led_rouge.Off();
+          break;
 
-      case JOUR_ROUGE:
-        digitalWrite(LED_BLEU, LOW);
-        digitalWrite(LED_BLANC, LOW);
-        digitalWrite(LED_ROUGE, HIGH);
-        break;
+        case JOUR_BLANC:
+          if (demain != JOUR_BLEU) led_bleu.Off();
+          if (demain != JOUR_BLANC) led_blanc.On();
+          if (demain != JOUR_ROUGE) led_rouge.Off();
+          break;
+
+        case JOUR_ROUGE:
+          if (demain != JOUR_BLEU) led_bleu.Off();
+          if (demain != JOUR_BLANC) led_blanc.Off();
+          if (demain != JOUR_ROUGE) led_rouge.On();
+          break;
+      }
+	  }
+    else {
+      led_bleu.Off();
+      led_blanc.Off();
+      led_rouge.Off();
     }
+
     lastTime_maj = currentTime;
   }
 }
