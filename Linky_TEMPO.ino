@@ -36,18 +36,19 @@
 // 2023/03/23 - FB V1.0.4 - Correction sur inversion sorties relais eau/chauf. Merci à Patrick F. pour son aide.
 // 2023/04/21 - FB V1.0.5 - Correction sur la detection du mode TIC standard. Merci à Gilbert P. pour son aide.
 // 2023/06/16 - FB V1.1.0 - Ajout visualisation couleur lendemain
+// 2023/07/06 - FB V1.2.0 - Inversion ordre relais, les relais seront moins sollicités. Modif affichage detection des modes TIC, clignotement des leds rouges ou led bleu en plus de la led verte. 
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.1.0"
+#define VERSION   "v1.2.0"
 
 //#define FORCE_MODE_TIC		TINFO_MODE_HISTORIQUE
 //#define FORCE_MODE_TIC		TINFO_MODE_STANDARD
 
-//#define DEBUG_TEMPO
+#define DEBUG_TEMPO
 //#define DEBUG_TEST
 //#define DEBUG_TIC
 
@@ -274,12 +275,13 @@ byte rc=0;
 // ---------------------------------------------------------------- 
 // change_etat_led_teleinfo
 // ---------------------------------------------------------------- 
-void change_etat_led_teleinfo()
+void change_etat_led(uint8_t led)
 {
-  static int led_state=0;
+  static uint8_t led_state;
 
   led_state = !led_state;
-  digitalWrite(LED_TIC, led_state);
+  digitalWrite(led, led_state);
+
 }
 
 // ---------------------------------------------------------------- 
@@ -311,6 +313,7 @@ int nbc_val=0;
 _Mode_e mode;
 
   digitalWrite(LED_TIC, HIGH);
+  digitalWrite(LED_BLANC, HIGH);
   
   // Test en mode historique
   // Recherche des éléments de début, milieu et fin de trame (0x0A, 0x20, 0x20, 0x0D)
@@ -320,6 +323,7 @@ _Mode_e mode;
   while (!flag_timeout && !flag_found_speed) {
     if (Serial.available()>0) {
       char in = (char)Serial.read() & 127;  // seulement sur 7 bits
+      change_etat_led(LED_TIC);
 	  
 	  #ifdef DEBUG_TIC
 		Serial.print(in, HEX);
@@ -376,17 +380,19 @@ _Mode_e mode;
     }
   }
 
+  digitalWrite(LED_BLANC, LOW);
+
   if (flag_timeout == true && flag_found_speed == false) { // trame avec vistesse histo non trouvée donc passage en mode standard
      mode = TINFO_MODE_STANDARD;
      Serial.end();
      Serial.begin(9600); // mode standard
      Serial.println(F(">> TIC mode standard <<"));
-     clignote_led(LED_TIC, 3, 500);
+     clignote_led(LED_BLEU, 6, 300);
   }
   else {
     mode = TINFO_MODE_HISTORIQUE;
     Serial.println(F(">> TIC mode historique <<"));
-    clignote_led(LED_TIC, 6, 200);
+    clignote_led(LED_ROUGE, 6, 300);
   }
   
   digitalWrite(LED_TIC, LOW);
@@ -400,7 +406,7 @@ _Mode_e mode;
 void send_teleinfo(char *etiq, char *val)
 {
    
-  change_etat_led_teleinfo();
+  change_etat_led(LED_TIC);
 
 #ifdef DEBUG_TEMPO
   Serial.print(etiq);
@@ -688,8 +694,8 @@ void loop() {
     lecture_val_switch(&val_chauf, &val_eau);
     // chauf ------
     if (recup_val_relais_chauf(val_chauf) == 1) {
-      digitalWrite(RELAIS_CHAUF, HIGH);
-	    Serial.println(F("RELAIS_CHAUF.HIGH"));
+      digitalWrite(RELAIS_CHAUF, LOW);
+	    Serial.println(F("RELAIS_CHAUF.LOW"));
 
       if (heure == HEURE_PLEINE) {
         led_chauf.Blink(600, 600).Forever();
@@ -701,16 +707,16 @@ void loop() {
       }
     }
     else {
-	    Serial.println(F("RELAIS_CHAUF.LOW"));
-      digitalWrite(RELAIS_CHAUF, LOW);
+	    Serial.println(F("RELAIS_CHAUF.HIGH"));
+      digitalWrite(RELAIS_CHAUF, HIGH);
       Serial.println(F("led_chauf.Off"));
       led_chauf.Off();
     }
     
     // eau -----
     if (recup_val_relais_eau(val_eau) == 1) {
-	    Serial.println(F("RELAIS_EAU.HIGH"));
-      digitalWrite(RELAIS_EAU, HIGH);
+	    Serial.println(F("RELAIS_EAU.LOW"));
+      digitalWrite(RELAIS_EAU, LOW);
 
       if (heure == HEURE_PLEINE) {
         led_eau.Blink(600, 600).Forever();
@@ -722,8 +728,8 @@ void loop() {
       }
     }
     else {
-	    Serial.println(F("RELAIS_EAU.LOW"));
-      digitalWrite(RELAIS_EAU, LOW);
+	    Serial.println(F("RELAIS_EAU.HIGH"));
+      digitalWrite(RELAIS_EAU, HIGH);
       Serial.println(F("led_eau.Off"));
       led_eau.Off();
     }
