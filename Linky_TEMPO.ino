@@ -37,13 +37,14 @@
 // 2023/04/21 - FB V1.0.5 - Correction sur la detection du mode TIC standard. Merci à Gilbert P. pour son aide.
 // 2023/06/16 - FB V1.1.0 - Ajout visualisation couleur lendemain
 // 2023/07/06 - FB V1.2.0 - Inversion ordre relais, les relais seront moins sollicités. Modif affichage detection des modes TIC, clignotement des leds rouges ou led bleu en plus de la led verte. 
+// 2023/07/20 - FB V1.2.1 - Ajout traces debug. Inversion relais eau.
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.2.0"
+#define VERSION   "v1.2.1"
 
 //#define FORCE_MODE_TIC		TINFO_MODE_HISTORIQUE
 //#define FORCE_MODE_TIC		TINFO_MODE_STANDARD
@@ -176,57 +177,83 @@ byte recup_val_relais_chauf(byte val_CHAUF)
 {
 byte rc=0;
 
+  #ifdef DEBUG_TEMPO
+    Serial.print(F("recup_val_relais_chauf "));
+    Serial.print(val_CHAUF);
+    Serial.print(",");
+    Serial.print(jour);
+    Serial.print(",");
+    Serial.print(heure);
+    Serial.println(".");
+  #endif
+
   switch (val_CHAUF) {
     case CHAUF_0:
-      Serial.println("CHAUF_0");
+      Serial.println("CHAUF_0:1");
       rc=1;
       break;
       
     case CHAUF_1:
+      Serial.print("CHAUF_1:");
       if (jour == JOUR_BLEU || jour == JOUR_BLANC || (jour == JOUR_ROUGE && heure == HEURE_CREUSE)) {
-        Serial.println("CHAUF_1");
+        Serial.println("1");
         rc=1;
       }
+      else Serial.println("0");
       break;
 
     case CHAUF_2:
+      Serial.print("CHAUF_2:");
       if (jour == JOUR_BLEU || jour == JOUR_BLANC) {
-        Serial.println("CHAUF_2");
+        Serial.println("1");
         rc=1;
       }
+      else Serial.println("0");
       break;
 
     case CHAUF_3:
+      Serial.print("CHAUF_3:");
       if (jour == JOUR_BLEU || (jour == JOUR_BLANC && heure == HEURE_CREUSE)) {
-        Serial.println("CHAUF_3");
+        Serial.println("1");
         rc=1;
       }
+      else Serial.println("0");
       break;
 
     case CHAUF_4:
+      Serial.print("CHAUF_4:");
       if (jour == JOUR_BLEU) {
-        Serial.println("CHAUF_4");
+        Serial.println("1");
         rc=1;
       }
+      else Serial.println("0");
       break;
 
     case CHAUF_5:
+      Serial.print("CHAUF_5:");
       if (jour == JOUR_BLEU && heure == HEURE_CREUSE) {
-        Serial.println("CHAUF_5");
+        Serial.println("1");
         rc=1;
       }
+      else Serial.println("0");
       break;
 
     case CHAUF_6:
-      Serial.println("CHAUF_6");
+      Serial.println("CHAUF_6:0");
       rc=0;
       break;
 
     case CHAUF_C:
+      Serial.print("CHAUF_C:");
       if ((jour == JOUR_BLEU || jour == JOUR_BLANC || jour == JOUR_ROUGE) && heure == HEURE_CREUSE) {
-        Serial.println("CHAUF_C");
+        Serial.println("1");
         rc=1;
       }
+      else Serial.println("0");
+      break;
+
+    default:
+      Serial.println("CHAUF_X:0");
       break;
   }
 
@@ -240,32 +267,52 @@ byte recup_val_relais_eau(byte val_eau)
 {
 byte rc=0;
 
+  #ifdef DEBUG_TEMPO
+    Serial.print(F("recup_val_relais_eau "));
+    Serial.print(val_eau);
+    Serial.print(",");
+    Serial.print(jour);
+    Serial.print(",");
+    Serial.print(heure);
+    Serial.println(".");
+  #endif
+
   switch (val_eau) {
 
     case EAU_0:
-      Serial.println("EAU_0");
+      Serial.println("EAU_0:1");
       rc=1;
       break;
 
     case EAU_1:
+      Serial.print("EAU_1:");
       if ((jour == JOUR_BLEU && heure == HEURE_CREUSE) || (jour == JOUR_BLANC && heure == HEURE_CREUSE) || (jour == JOUR_ROUGE && heure == HEURE_CREUSE)) {
-        Serial.println("EAU_1"); 
+        Serial.println("1"); 
         rc=1;
       }
+      else Serial.println("0");
       break;
       
     case EAU_2:
+      Serial.print("EAU_2:");
       if (jour == JOUR_BLEU || (jour == JOUR_BLANC && heure == HEURE_CREUSE) || (jour == JOUR_ROUGE && heure == HEURE_CREUSE)) {
-        Serial.println("EAU_2");
+        Serial.println("1");
         rc=1;
       }
+      else Serial.println("0");
       break;
 
     case EAU_3:
+      Serial.print("EAU_3:");
       if (jour == JOUR_BLEU || jour == JOUR_BLANC || (jour == JOUR_ROUGE && heure == HEURE_CREUSE)) {
-        Serial.println("EAU_3");
+        Serial.println("1");
         rc=1;
       }
+      else Serial.println("0");
+      break;
+
+    default:
+      Serial.println("EAU_X:0");
       break;
   }
 
@@ -675,23 +722,25 @@ void loop() {
   if (currentTime - lastTime_maj > TEMPS_MAJ) {
 
     #ifdef DEBUG_TEST
-    // Test jour/tarif
-    demain++;
-    if (demain > JOUR_ROUGE) {
-      demain = JOUR_SANS;
-      jour++;
-    }
-    if (jour > JOUR_ROUGE) {
-      jour = JOUR_SANS;
-    }
-    Serial.print("> Jour : ");
-    Serial.println(jour);
-    Serial.print("> Demain : ");
-    Serial.println(demain);
-    Serial.println("----------------------------");
+      // Test jour/tarif
+      demain++;
+      if (demain > JOUR_ROUGE) {
+        demain = JOUR_SANS;
+        jour++;
+      }
+      if (jour > JOUR_ROUGE) {
+        jour = JOUR_SANS;
+      }
+      Serial.print("> Jour : ");
+      Serial.println(jour);
+      Serial.print("> Demain : ");
+      Serial.println(demain);
+      Serial.println("----------------------------");
     #endif
+
     // commande relais suivant programmation -------
     lecture_val_switch(&val_chauf, &val_eau);
+
     // chauf ------
     if (recup_val_relais_chauf(val_chauf) == 1) {
       digitalWrite(RELAIS_CHAUF, LOW);
@@ -715,8 +764,8 @@ void loop() {
     
     // eau -----
     if (recup_val_relais_eau(val_eau) == 1) {
-	    Serial.println(F("RELAIS_EAU.LOW"));
-      digitalWrite(RELAIS_EAU, LOW);
+	    Serial.println(F("RELAIS_EAU.HIGH"));
+      digitalWrite(RELAIS_EAU, HIGH);
 
       if (heure == HEURE_PLEINE) {
         led_eau.Blink(600, 600).Forever();
@@ -728,8 +777,8 @@ void loop() {
       }
     }
     else {
-	    Serial.println(F("RELAIS_EAU.HIGH"));
-      digitalWrite(RELAIS_EAU, HIGH);
+	    Serial.println(F("RELAIS_EAU.LOW"));
+      digitalWrite(RELAIS_EAU, LOW);
       Serial.println(F("led_eau.Off"));
       led_eau.Off();
     }
