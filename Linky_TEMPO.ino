@@ -38,13 +38,14 @@
 // 2023/06/16 - FB V1.1.0 - Ajout visualisation couleur lendemain
 // 2023/07/06 - FB V1.2.0 - Inversion ordre relais, les relais seront moins sollicités. Modif affichage detection des modes TIC, clignotement des leds rouges ou led bleu en plus de la led verte. 
 // 2023/07/20 - FB V1.2.1 - Ajout traces debug. Inversion relais eau.
+// 2023/07/22 - FB V1.2.2 - Correction détection passage HP/HC. Merci à Christophe D. pour son aide
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.2.1"
+#define VERSION   "v1.2.2"
 
 //#define FORCE_MODE_TIC		TINFO_MODE_HISTORIQUE
 //#define FORCE_MODE_TIC		TINFO_MODE_STANDARD
@@ -496,11 +497,11 @@ void send_teleinfo(char *etiq, char *val)
     if (strcmp(etiq, "PTEC") == 0) {
       Serial.print(F("PTEC:"));
       Serial.println(val);
-      jour=JOUR_SANS;
-      heure=HEURE_TOUTE;
-	  
+      
   	  if (tarif == TARIF_TEMPO) {
-        
+        jour=JOUR_SANS;
+        heure=HEURE_TOUTE;
+
         if (strcmp(val, "HCJB") == 0) {
           jour=JOUR_BLEU;
           heure=HEURE_CREUSE;
@@ -539,6 +540,7 @@ void send_teleinfo(char *etiq, char *val)
       Serial.print(F("DEMAIN:"));
       Serial.println(val);
 	    demain=JOUR_SANS;
+
   	  if (strcmp(val, "BLEU") == 0) {
     		demain=JOUR_BLEU;
     		Serial.println(F("bleu"));
@@ -571,10 +573,11 @@ void send_teleinfo(char *etiq, char *val)
     }
 
     // Recup HC/HP
-    heure=HEURE_TOUTE;
     if (strcmp(etiq, "LTARF") == 0) {
       Serial.print(F("LTARF:"));
       Serial.println(val);
+      heure=HEURE_TOUTE;
+
       if (strstr(val, "HP") != NULL) {
         heure=HEURE_PLEINE;
         Serial.println(F("HEURE_PLEINE"));
