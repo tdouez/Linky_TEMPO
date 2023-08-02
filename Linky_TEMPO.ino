@@ -39,13 +39,14 @@
 // 2023/07/06 - FB V1.2.0 - Inversion ordre relais, les relais seront moins sollicités. Modif affichage detection des modes TIC, clignotement des leds rouges ou led bleu en plus de la led verte. 
 // 2023/07/20 - FB V1.2.1 - Ajout traces debug. Inversion relais eau.
 // 2023/07/22 - FB V1.2.2 - Correction détection passage HP/HC. Merci à Christophe D. pour son aide
+// 2023/08/02 - FB V1.2.3 - Inversion relais eau, non conforme au tableau
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.2.2"
+#define VERSION   "v1.2.3"
 
 //#define FORCE_MODE_TIC		TINFO_MODE_HISTORIQUE
 //#define FORCE_MODE_TIC		TINFO_MODE_STANDARD
@@ -767,8 +768,8 @@ void loop() {
     
     // eau -----
     if (recup_val_relais_eau(val_eau) == 1) {
-	    Serial.println(F("RELAIS_EAU.HIGH"));
-      digitalWrite(RELAIS_EAU, HIGH);
+	    Serial.println(F("RELAIS_EAU.LOW"));
+      digitalWrite(RELAIS_EAU, LOW);
 
       if (heure == HEURE_PLEINE) {
         led_eau.Blink(600, 600).Forever();
@@ -780,8 +781,8 @@ void loop() {
       }
     }
     else {
-	    Serial.println(F("RELAIS_EAU.LOW"));
-      digitalWrite(RELAIS_EAU, LOW);
+	    Serial.println(F("RELAIS_EAU.HIGH"));
+      digitalWrite(RELAIS_EAU, HIGH);
       Serial.println(F("led_eau.Off"));
       led_eau.Off();
     }
