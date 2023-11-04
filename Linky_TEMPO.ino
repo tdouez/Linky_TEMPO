@@ -40,13 +40,14 @@
 // 2023/07/20 - FB V1.2.1 - Ajout traces debug. Inversion relais eau.
 // 2023/07/22 - FB V1.2.2 - Correction détection passage HP/HC. Merci à Christophe D. pour son aide
 // 2023/08/02 - FB V1.2.3 - Inversion relais eau, non conforme au tableau
+// 2023/11/04 - FB V1.2.4 - Correction affichage couleur lendemain
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.2.3"
+#define VERSION   "v1.2.4"
 
 //#define FORCE_MODE_TIC		TINFO_MODE_HISTORIQUE
 //#define FORCE_MODE_TIC		TINFO_MODE_STANDARD
@@ -546,11 +547,11 @@ void send_teleinfo(char *etiq, char *val)
     		demain=JOUR_BLEU;
     		Serial.println(F("bleu"));
   	  }
-  	  if (strcmp(val, "BLANC") == 0) {
+  	  if (strcmp(val, "BLAN") == 0) {
     		demain=JOUR_BLANC;
     		Serial.println(F("blanc"));
   	  }
-  	  if (strcmp(val, "ROUGE") == 0) {
+  	  if (strcmp(val, "ROUG") == 0) {
     		demain=JOUR_ROUGE;
     		Serial.println(F("rouge"));
   	  }
