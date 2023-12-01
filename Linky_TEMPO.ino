@@ -41,13 +41,14 @@
 // 2023/07/22 - FB V1.2.2 - Correction détection passage HP/HC. Merci à Christophe D. pour son aide
 // 2023/08/02 - FB V1.2.3 - Inversion relais eau, non conforme au tableau
 // 2023/11/04 - FB V1.2.4 - Correction affichage couleur lendemain
+// 2023/12/01 - FB V1.2.5 - Correction detection jour lendemain pour TIC standard
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.2.4"
+#define VERSION   "v1.2.5"
 
 //#define FORCE_MODE_TIC		TINFO_MODE_HISTORIQUE
 //#define FORCE_MODE_TIC		TINFO_MODE_STANDARD
@@ -596,14 +597,14 @@ void send_teleinfo(char *etiq, char *val)
       Serial.println(val);
   
       // couleur jour courant
-      unsigned long long_stge = strtol(val, NULL, 16);
+      unsigned long long_stge = strtoul(val, NULL, 16);
       long_stge = (long_stge >> 24) & B11;
       jour = (int)long_stge;
       Serial.print(F("Jour: "));
       Serial.print(jour);
   
       // couleur jour lendemain
-      long_stge = strtol(val, NULL, 16);
+      long_stge = strtoul(val, NULL, 16);
       long_stge = (long_stge >> 26) & B11;
       demain = (int)long_stge;
       Serial.print(F(", Demain: "));
