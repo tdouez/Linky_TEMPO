@@ -42,13 +42,14 @@
 // 2023/08/02 - FB V1.2.3 - Inversion relais eau, non conforme au tableau
 // 2023/11/04 - FB V1.2.4 - Correction affichage couleur lendemain
 // 2023/12/01 - FB V1.2.5 - Correction detection jour lendemain pour TIC standard
+// 2023/12/20 - FB V1.3.0 - Modification programmation et ajout programme relais couleur lendemain rouge
 //--------------------------------------------------------------------
 
 #include <Arduino.h>
 #include "LibTeleinfoLite.h"
 #include <jled.h>
 
-#define VERSION   "v1.2.5"
+#define VERSION   "v1.3.0"
 
 //#define FORCE_MODE_TIC		TINFO_MODE_HISTORIQUE
 //#define FORCE_MODE_TIC		TINFO_MODE_STANDARD
@@ -85,20 +86,16 @@
 #define JOUR_BLANC 2
 #define JOUR_ROUGE 3
 
-#define CHAUF_0  B000
-#define CHAUF_1  B001
-#define CHAUF_2  B010
-#define CHAUF_3  B011
-#define CHAUF_4  B100
-#define CHAUF_5  B101
-#define CHAUF_6  B110
-#define CHAUF_C  B111
+#define CHAUF_1  B00
+#define CHAUF_2  B01
+#define CHAUF_3  B10
+#define CHAUF_4  B11
 
-#define EAU_0   B000
-#define EAU_1   B001
-#define EAU_2   B010
-#define EAU_3   B011
-
+#define EAU_1   B000
+#define EAU_2   B001
+#define EAU_3   B010
+#define EAU_4   B011
+#define EAU_5   B100
 
 const unsigned long TEMPS_MAJ  =  10000; // 10s,  Minimum time between send (in milliseconds). 
 unsigned long lastTime_maj = 0;
@@ -141,16 +138,20 @@ void sequence_test_led()
   delay(300);
   Serial.println(F("LED EAU"));
   digitalWrite(LED_EAU, HIGH);
+  digitalWrite(RELAIS_EAU, HIGH);
   delay(300);
   Serial.println(F("LED CHAUF"));
   digitalWrite(LED_CHAUF, HIGH);
+  digitalWrite(RELAIS_CHAUF, HIGH);
   delay(300);
   digitalWrite(LED_ROUGE, LOW);
   digitalWrite(LED_BLANC, LOW);
   digitalWrite(LED_BLEU, LOW);
   digitalWrite(LED_TIC, LOW);
   digitalWrite(LED_EAU, LOW);
+  digitalWrite(RELAIS_EAU, LOW);
   digitalWrite(LED_CHAUF, LOW);
+  digitalWrite(RELAIS_CHAUF, LOW);
   Serial.println(F("-------------------"));
 }
 
@@ -164,8 +165,8 @@ void lecture_val_switch(byte *val_chauf, byte *val_eau)
   *val_eau = 0;
   
   for (int i=0; i<5; i++) {
-    if (i<3) bitWrite(*val_chauf, i, !digitalRead(SW_4-i));
-      else bitWrite(*val_eau, i-3, !digitalRead(SW_4-i));
+    if (i<2) bitWrite(*val_chauf, i, !digitalRead(SW_4-i));
+      else bitWrite(*val_eau, i-2, !digitalRead(SW_4-i));
   }
   Serial.print("Sw chauf:");
   Serial.print(*val_chauf, BIN);
@@ -192,14 +193,10 @@ byte rc=0;
   #endif
 
   switch (val_CHAUF) {
-    case CHAUF_0:
-      Serial.println("CHAUF_0:1");
-      rc=1;
-      break;
       
     case CHAUF_1:
       Serial.print("CHAUF_1:");
-      if (jour == JOUR_BLEU || jour == JOUR_BLANC || (jour == JOUR_ROUGE && heure == HEURE_CREUSE)) {
+      if (jour == JOUR_ROUGE && heure == HEURE_PLEINE) {
         Serial.println("1");
         rc=1;
       }
@@ -208,7 +205,7 @@ byte rc=0;
 
     case CHAUF_2:
       Serial.print("CHAUF_2:");
-      if (jour == JOUR_BLEU || jour == JOUR_BLANC) {
+      if (jour == JOUR_ROUGE && (heure == HEURE_CREUSE || heure == HEURE_PLEINE)) {
         Serial.println("1");
         rc=1;
       }
@@ -217,7 +214,7 @@ byte rc=0;
 
     case CHAUF_3:
       Serial.print("CHAUF_3:");
-      if (jour == JOUR_BLEU || (jour == JOUR_BLANC && heure == HEURE_CREUSE)) {
+      if ((jour == JOUR_BLANC && heure == HEURE_PLEINE) || (jour == JOUR_ROUGE && (heure == HEURE_CREUSE || heure == HEURE_PLEINE))) {
         Serial.println("1");
         rc=1;
       }
@@ -226,30 +223,7 @@ byte rc=0;
 
     case CHAUF_4:
       Serial.print("CHAUF_4:");
-      if (jour == JOUR_BLEU) {
-        Serial.println("1");
-        rc=1;
-      }
-      else Serial.println("0");
-      break;
-
-    case CHAUF_5:
-      Serial.print("CHAUF_5:");
-      if (jour == JOUR_BLEU && heure == HEURE_CREUSE) {
-        Serial.println("1");
-        rc=1;
-      }
-      else Serial.println("0");
-      break;
-
-    case CHAUF_6:
-      Serial.println("CHAUF_6:0");
-      rc=0;
-      break;
-
-    case CHAUF_C:
-      Serial.print("CHAUF_C:");
-      if ((jour == JOUR_BLEU || jour == JOUR_BLANC || jour == JOUR_ROUGE) && heure == HEURE_CREUSE) {
+      if ((jour == JOUR_BLEU || jour == JOUR_BLANC || jour == JOUR_ROUGE) && heure == HEURE_PLEINE) {
         Serial.println("1");
         rc=1;
       }
@@ -283,14 +257,10 @@ byte rc=0;
 
   switch (val_eau) {
 
-    case EAU_0:
-      Serial.println("EAU_0:1");
-      rc=1;
-      break;
 
     case EAU_1:
       Serial.print("EAU_1:");
-      if ((jour == JOUR_BLEU && heure == HEURE_CREUSE) || (jour == JOUR_BLANC && heure == HEURE_CREUSE) || (jour == JOUR_ROUGE && heure == HEURE_CREUSE)) {
+      if ((jour == JOUR_BLEU || jour == JOUR_BLANC || jour == JOUR_ROUGE) && heure == HEURE_PLEINE) {
         Serial.println("1"); 
         rc=1;
       }
@@ -299,7 +269,7 @@ byte rc=0;
       
     case EAU_2:
       Serial.print("EAU_2:");
-      if (jour == JOUR_BLEU || (jour == JOUR_BLANC && heure == HEURE_CREUSE) || (jour == JOUR_ROUGE && heure == HEURE_CREUSE)) {
+      if ((jour == JOUR_BLANC || jour == JOUR_ROUGE) && heure == HEURE_PLEINE) {
         Serial.println("1");
         rc=1;
       }
@@ -308,7 +278,25 @@ byte rc=0;
 
     case EAU_3:
       Serial.print("EAU_3:");
-      if (jour == JOUR_BLEU || jour == JOUR_BLANC || (jour == JOUR_ROUGE && heure == HEURE_CREUSE)) {
+      if (jour == JOUR_ROUGE && heure == HEURE_PLEINE) {
+        Serial.println("1");
+        rc=1;
+      }
+      else Serial.println("0");
+      break;
+	  
+	case EAU_4:
+      Serial.print("EAU_4:");
+      if (demain == JOUR_ROUGE) {
+        Serial.println("1");
+        rc=1;
+      }
+      else Serial.println("0");
+      break;
+	  
+	case EAU_5:
+      Serial.print("EAU_5:");
+      if (demain == JOUR_ROUGE && (jour == JOUR_BLEU || jour == JOUR_BLANC)) {
         Serial.println("1");
         rc=1;
       }
@@ -619,7 +607,7 @@ void send_teleinfo(char *etiq, char *val)
 void test_couleur_jour() {
 
   Serial.println("---- Chauffage -----");
-  for (int chauf=CHAUF_0; chauf <= CHAUF_C; chauf++) {
+  for (int chauf=CHAUF_1; chauf <= CHAUF_4; chauf++) {
     Serial.print("CHAUF");
     Serial.print(chauf);
     Serial.print(" ");
@@ -633,7 +621,7 @@ void test_couleur_jour() {
   }
 
   Serial.println("---- Eau -----");
-  for (int eau=EAU_0; eau <= EAU_3; eau++) {
+  for (int eau=EAU_1; eau <= EAU_5; eau++) {
     Serial.print("EAU");
     Serial.print(eau);
     Serial.print(" ");
@@ -749,8 +737,8 @@ void loop() {
 
     // chauf ------
     if (recup_val_relais_chauf(val_chauf) == 1) {
-      digitalWrite(RELAIS_CHAUF, LOW);
-	    Serial.println(F("RELAIS_CHAUF.LOW"));
+		digitalWrite(RELAIS_CHAUF, HIGH);
+	    Serial.println(F("RELAIS_CHAUF.HIGH"));
 
       if (heure == HEURE_PLEINE) {
         led_chauf.Blink(600, 600).Forever();
@@ -762,16 +750,16 @@ void loop() {
       }
     }
     else {
-	    Serial.println(F("RELAIS_CHAUF.HIGH"));
-      digitalWrite(RELAIS_CHAUF, HIGH);
+	  Serial.println(F("RELAIS_CHAUF.LOW"));
+      digitalWrite(RELAIS_CHAUF, LOW);
       Serial.println(F("led_chauf.Off"));
       led_chauf.Off();
     }
     
     // eau -----
     if (recup_val_relais_eau(val_eau) == 1) {
-	    Serial.println(F("RELAIS_EAU.LOW"));
-      digitalWrite(RELAIS_EAU, LOW);
+	  Serial.println(F("RELAIS_EAU.HIGH"));
+      digitalWrite(RELAIS_EAU, HIGH);
 
       if (heure == HEURE_PLEINE) {
         led_eau.Blink(600, 600).Forever();
@@ -783,8 +771,8 @@ void loop() {
       }
     }
     else {
-	    Serial.println(F("RELAIS_EAU.HIGH"));
-      digitalWrite(RELAIS_EAU, HIGH);
+	  Serial.println(F("RELAIS_EAU.LOW"));
+      digitalWrite(RELAIS_EAU, LOW);
       Serial.println(F("led_eau.Off"));
       led_eau.Off();
     }
